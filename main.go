@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	// "github.com/microcosm-cc/bluemonday"
+	"github.com/russross/blackfriday"
 	"html/template"
 	"io"
 	"io/ioutil"
@@ -13,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	tt "text/template"
 )
 
 var (
@@ -30,7 +33,7 @@ var (
 //commandsFile        string
 
 const MAX_MEMORY = 1 * 1024 * 1024
-const VERSION = "1.0"
+const VERSION = "1.1"
 
 func main() {
 
@@ -40,7 +43,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	flag.StringVar(&dir, "dir", "/tmp", "Specify a directory to server files from.")
+	flag.StringVar(&dir, "dir", ".", "Specify a directory to server files from.")
 	flag.StringVar(&port, "port", ":8080", "Port to bind the file server")
 	flag.BoolVar(&logging, "log", true, "Enable Log (true/false)")
 	flag.StringVar(&auth, "auth", "", "'username:pass' Basic Auth")
@@ -126,9 +129,41 @@ func handleReq(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Index dir %s", r.URL.Path)
 		handleDir(w, r)
 	} else {
-		log.Printf("downloading file %s", path.Clean(dir+r.URL.Path))
+		cleanPath := path.Clean(dir + r.URL.Path)
+		log.Printf("downloading file %s", cleanPath)
 		r.Header.Del("If-Modified-Since")
-		http.ServeFile(w, r, path.Clean(dir+r.URL.Path))
+		if strings.Contains(cleanPath, ".md") && r.FormValue("get_file") != "true" {
+			htmlFlags := 0
+			htmlFlags |= blackfriday.HTML_FOOTNOTE_RETURN_LINKS
+
+			// set up options
+			extensions := 0
+			extensions |= blackfriday.EXTENSION_NO_INTRA_EMPHASIS
+			extensions |= blackfriday.EXTENSION_TABLES
+			extensions |= blackfriday.EXTENSION_FENCED_CODE
+			extensions |= blackfriday.EXTENSION_AUTOLINK
+			extensions |= blackfriday.EXTENSION_STRIKETHROUGH
+			extensions |= blackfriday.EXTENSION_SPACE_HEADERS
+			// extensions |= blackfriday.EXTENSION_HARD_LINE_BREAK
+
+			fi, _ := os.Stat(cleanPath)
+			css := "/-/assets/github.css"
+			title := fi.Name()
+			input, _ := ioutil.ReadFile(cleanPath)
+
+			renderer := blackfriday.HtmlRenderer(htmlFlags, title, css)
+
+			output := blackfriday.Markdown(input, renderer, extensions)
+
+			tmpl, _ := tt.New("tmpl").Parse(templContent)
+			md := mdContent{Content: string(output)}
+			tmpl.Execute(w, md)
+			// bc := blackfriday.MarkdownCommon(c)
+			// html := bluemonday.UGCPolicy().SanitizeBytes(bc)
+			// fmt.Fprintf(w, "%s", output)
+		} else {
+			http.ServeFile(w, r, cleanPath)
+		}
 		//http.ServeContent(w, r, r.URL.Path)
 		//w.Write([]byte("this is a test inside file handler"))
 

@@ -56,7 +56,11 @@ var templContent = `<!doctype html>
       <script>
         $(document).ready(function() {
           $('pre code').each(function(i, block) {
-            hljs.highlightBlock(block);
+          	if(block.className!=""){
+          		hljs.highlightBlock(block);
+          	}else{
+          		$(this).addClass("hljs");
+          	}            
           });
         });
       </script>
